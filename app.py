@@ -347,7 +347,6 @@ streamlit run app.py
 
 ### ✅ **Deployment Ready**
 ```
-📁 Free • Zero Cost • Production Ready
 ├── Gemini API (Free tier)
 ├── edge-tts (Free)
 ├── MoviePy (Free)
