@@ -62,7 +62,7 @@ if st.button("🚀 إنتاج الفيديو الكامل"):
     else:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             with st.spinner("🧠 جاري كتابة السيناريو التسويقي..."):
                 prompt = f"اكتب سيناريو جذاب جداً لـ {platform} عن {topic}. ركز على الفوائد والتحفيز."
