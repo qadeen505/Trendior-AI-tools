@@ -1,0 +1,7 @@
+streamlit
+google-generativeai
+edge-tts
+moviepy
+openai-whisper
+numpy
+Pillow
