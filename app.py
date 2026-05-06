@@ -370,4 +370,3 @@ streamlit run app.py
 # Add A/B testing variants
 ```
 
-**Ready to deploy in 2 minutes!** 🎬✨
