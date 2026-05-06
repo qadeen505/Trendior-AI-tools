@@ -358,8 +358,8 @@ streamlit run app.py
 ## 🎯 Usage Flow
 1. **Add Gemini API key** (sidebar)
 2. **Select platform** (YouTube/TikTok/Social)
-3. **Enter topic** → `🚀 Generate Script`
-4. **Review script** → `🎥 Generate Video`
+3. **Enter topic**  `🚀 Generate Script`
+4. **Review script**  `🎥 Generate Video`
 5. **Download** platform-optimized MP4
 
 ## 🔧 Extend with Premium Features
