@@ -347,11 +347,12 @@ streamlit run app.py
 
 ### ✅ **Deployment Ready**
 ```
-├── Gemini API (Free tier)
-├── edge-tts (Free)
-├── MoviePy (Free)
-├── Whisper (Free)
-└── Streamlit Cloud (Free hosting)
+# 📁 Free • Zero Cost • Production Ready
+# ├─ Gemini API (Free tier)
+# ├─ edge-tts (Free)
+# ├─ MoviePy (Free)
+# ├─ Whisper (Free)
+# └─ Streamlit Cloud (Free hosting)
 ```
 
 ## 🎯 Usage Flow
