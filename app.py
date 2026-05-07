@@ -3,7 +3,9 @@ import google.generativeai as genai
 import asyncio
 import edge_tts
 import tempfile
-from moviepy.editor import ColorClip, TextClip, CompositeVideoClip, AudioFileClip
+import textwrap
+from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip
+from PIL import Image, ImageDraw, ImageFont
 
 
 # =========================
@@ -57,30 +59,93 @@ async def generate_voice_over(text, voice, filename):
 
 # =========================
 # Video Builder Function
+# PIL Version - No ImageMagick Needed
 # =========================
 def build_video(script, audio_file):
     audio = AudioFileClip(audio_file)
     duration = audio.duration
 
-    bg = ColorClip(
-        size=(720, 1280),
-        color=(20, 20, 20)
-    ).set_duration(duration)
+    width, height = 720, 1280
 
-    video_text = "TRENDIOR AI TOOLS\n\n" + script[:900]
+    # Create video background as an image
+    img = Image.new("RGB", (width, height), color=(16, 18, 24))
+    draw = ImageDraw.Draw(img)
 
-    txt = TextClip(
-        video_text,
-        fontsize=36,
-        color="white",
-        size=(620, 1000),
-        method="caption",
-        align="center"
+    # Load fonts
+    try:
+        font_title = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            46
+        )
+        font_text = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            32
+        )
+        font_footer = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            28
+        )
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_text = ImageFont.load_default()
+        font_footer = ImageFont.load_default()
+
+    # Title
+    title = "TRENDIOR AI TOOLS"
+    draw.text(
+        (width // 2, 120),
+        title,
+        font=font_title,
+        fill=(255, 255, 255),
+        anchor="mm"
     )
 
-    txt = txt.set_position("center").set_duration(duration)
+    # Decorative line
+    draw.line(
+        (100, 175, 620, 175),
+        fill=(120, 180, 255),
+        width=4
+    )
 
-    final = CompositeVideoClip([bg, txt]).set_audio(audio)
+    # Script text
+    clean_script = script.replace("\n", " ")
+    short_script = clean_script[:850]
+
+    wrapped_text = textwrap.fill(short_script, width=34)
+
+    y = 250
+    for line in wrapped_text.split("\n"):
+        draw.text(
+            (width // 2, y),
+            line,
+            font=font_text,
+            fill=(235, 235, 235),
+            anchor="mm"
+        )
+        y += 50
+
+        if y > 1040:
+            break
+
+    # Footer
+    footer = "Follow for curated AI tools"
+    draw.text(
+        (width // 2, 1160),
+        footer,
+        font=font_footer,
+        fill=(255, 255, 255),
+        anchor="mm"
+    )
+
+    # Save temporary image
+    image_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    image_path = image_temp.name
+    image_temp.close()
+    img.save(image_path)
+
+    # Convert image to video and add audio
+    bg_clip = ImageClip(image_path).set_duration(duration)
+    final = CompositeVideoClip([bg_clip]).set_audio(audio)
 
     output = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
     output_path = output.name
@@ -94,6 +159,7 @@ def build_video(script, audio_file):
     )
 
     audio.close()
+    bg_clip.close()
     final.close()
 
     return output_path
