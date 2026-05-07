@@ -1,33 +1,22 @@
 import streamlit as st
 import google.generativeai as genai
-import asyncio
-import edge_tts
-import tempfile
-import textwrap
+import json
 import re
-from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
-
-
-# =========================
-# Compatibility Fix
-# Fix for Pillow 10+ with MoviePy 1.0.3
-# =========================
-if not hasattr(Image, "ANTIALIAS"):
-    Image.ANTIALIAS = Image.Resampling.LANCZOS
 
 
 # =========================
 # Page Settings
 # =========================
 st.set_page_config(
-    page_title="Trendior AI Tools",
+    page_title="Trendior AI Video Director",
     page_icon="🎬",
     layout="wide"
 )
 
-st.title("🎬 Trendior AI Tools: English Video Maker")
-st.write("Generate an English script, realistic AI voice, and a simple animated vertical video.")
+st.title("🎬 Trendior AI Video Director")
+st.write(
+    "Generate a complete 4-minute cinematic video plan with characters, ages, genders, voices, scenes, locations, image prompts, and video prompts."
+)
 
 
 # =========================
@@ -47,370 +36,454 @@ with st.sidebar:
         ]
     )
 
-    voice_type = st.selectbox(
-        "English Voice:",
+    video_style = st.selectbox(
+        "Video Style:",
         [
-            "en-US-JennyNeural",
-            "en-US-GuyNeural",
-            "en-US-AriaNeural",
-            "en-US-DavisNeural",
-            "en-GB-RyanNeural",
-            "en-GB-SoniaNeural"
+            "Cinematic Realistic Drama",
+            "Luxury Product Commercial",
+            "Corporate Business Story",
+            "Emotional Family Story",
+            "AI Tools Promotional Story",
+            "Documentary Style",
+            "Viral Social Media Story"
         ]
     )
 
-    video_length = st.selectbox(
-        "Video Length:",
+    target_platform = st.selectbox(
+        "Target Platform:",
         [
-            "Short 45-60 seconds",
-            "Medium 90 seconds",
-            "Long 2 minutes"
+            "Instagram Reels",
+            "TikTok",
+            "YouTube Shorts",
+            "YouTube Long Video"
+        ]
+    )
+
+    language = st.selectbox(
+        "Script Language:",
+        [
+            "English",
+            "Arabic",
+            "English with short Arabic notes"
         ]
     )
 
 
 # =========================
-# Main Visible Inputs
+# Main Inputs
 # =========================
-st.markdown("### ✍️ Video Topic / Prompt")
+st.markdown("### ✍️ Video Idea / Prompt")
 
-topic = st.text_area(
-    "Write your video idea here:",
-    height=160,
-    placeholder="Example: Create a short video about how AI tools can help creators save time, write better content, and automate repetitive marketing tasks."
+video_idea = st.text_area(
+    "Write the video idea here:",
+    height=180,
+    placeholder=(
+        "Example: Create a cinematic 4-minute story about a father who loses his job, "
+        "then discovers AI tools that help him rebuild his income and start a smarter digital business."
+    )
 )
 
-platform = st.selectbox(
-    "Platform:",
-    [
-        "TikTok",
-        "Instagram Reels",
-        "YouTube Shorts"
-    ]
+brand_name = st.text_input(
+    "Brand / Project Name:",
+    value="TRENDIOR AI TOOLS"
 )
 
-generate_button = st.button("🚀 Generate Full Video")
+main_goal = st.text_area(
+    "Main Goal of the Video:",
+    height=100,
+    placeholder="Example: Promote curated AI tools for creators, marketers, and online business owners."
+)
 
-
-# =========================
-# Voice Over Function
-# =========================
-async def generate_voice_over(text, voice, filename):
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(filename)
+generate_button = st.button("🚀 Generate 4-Minute Cinematic Video Plan")
 
 
 # =========================
 # Helper Functions
 # =========================
-def load_font(size, bold=False):
-    try:
-        if bold:
-            return ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                size
-            )
-        return ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            size
-        )
-    except Exception:
-        return ImageFont.load_default()
+def clean_json_response(text):
+    text = text.strip()
 
+    # Remove markdown code fences if Gemini adds them
+    text = re.sub(r"^```json", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^```", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
 
-def clean_script_text(text):
-    text = re.sub(r"\[.*?\]", "", text)
-    text = re.sub(r"\(.*?\)", "", text)
-    text = text.replace("*", "")
-    text = text.replace("#", "")
-    text = re.sub(r"\s+", " ", text).strip()
+    # Extract JSON object if extra text exists
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end + 1]
+
     return text
 
 
-def split_script_into_scenes(script, max_chars=230):
-    sentences = re.split(r"(?<=[.!?])\s+", script)
-    scenes = []
-    current = ""
-
-    for sentence in sentences:
-        if len(current) + len(sentence) <= max_chars:
-            current += " " + sentence
-        else:
-            if current.strip():
-                scenes.append(current.strip())
-            current = sentence
-
-    if current.strip():
-        scenes.append(current.strip())
-
-    return scenes[:8]
+def safe_get(data, key, default=""):
+    return data.get(key, default) if isinstance(data, dict) else default
 
 
-def create_scene_image(scene_text, scene_number, total_scenes, platform):
-    width, height = 720, 1280
+def display_character_cards(characters):
+    st.markdown("## 👥 Characters")
 
-    img = Image.new("RGB", (width, height), color=(10, 14, 25))
-    draw = ImageDraw.Draw(img)
+    if not characters:
+        st.info("No characters found.")
+        return
 
-    title_font = load_font(46, bold=True)
-    scene_font = load_font(34, bold=True)
-    body_font = load_font(34, bold=False)
-    small_font = load_font(25, bold=True)
-    footer_font = load_font(27, bold=True)
+    for character in characters:
+        with st.container(border=True):
+            st.markdown(f"### {character.get('name', 'Unnamed Character')}")
 
-    # Background gradient
-    for y in range(height):
-        r = int(10 + y * 0.015)
-        g = int(14 + y * 0.02)
-        b = int(25 + y * 0.04)
-        draw.line((0, y, width, y), fill=(r, g, min(b, 70)))
+            col1, col2, col3, col4 = st.columns(4)
 
-    # Decorative circles
-    circle_positions = [
-        (-120, 100, 260, 480),
-        (500, 60, 880, 440),
-        (-80, 850, 280, 1210),
-        (470, 900, 850, 1280)
-    ]
+            with col1:
+                st.write("**Type:**", character.get("character_type", ""))
 
-    circle_colors = [
-        (35, 92, 160),
-        (80, 40, 150),
-        (25, 130, 120),
-        (120, 70, 30)
-    ]
+            with col2:
+                st.write("**Gender:**", character.get("gender", ""))
 
-    for pos, color in zip(circle_positions, circle_colors):
-        draw.ellipse(pos, outline=color, width=6)
+            with col3:
+                st.write("**Age:**", character.get("age", ""))
 
-    draw.text(
-        (width // 2, 92),
-        "TRENDIOR AI TOOLS",
-        font=title_font,
-        fill=(255, 255, 255),
-        anchor="mm"
-    )
+            with col4:
+                st.write("**Voice:**", character.get("recommended_voice", ""))
 
-    draw.text(
-        (width // 2, 145),
-        f"{platform} • AI Tools • Smart Workflows",
-        font=small_font,
-        fill=(160, 200, 255),
-        anchor="mm"
-    )
-
-    # Progress bar
-    bar_x = 90
-    bar_y = 200
-    bar_w = 540
-    bar_h = 12
-    progress = int(bar_w * (scene_number / total_scenes))
-
-    draw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
-        radius=8,
-        fill=(55, 60, 75)
-    )
-
-    draw.rounded_rectangle(
-        (bar_x, bar_y, bar_x + progress, bar_y + bar_h),
-        radius=8,
-        fill=(90, 180, 255)
-    )
-
-    draw.text(
-        (width // 2, 285),
-        f"SCENE {scene_number}",
-        font=scene_font,
-        fill=(180, 220, 255),
-        anchor="mm"
-    )
-
-    # Text box
-    box_x1, box_y1 = 70, 350
-    box_x2, box_y2 = 650, 900
-
-    draw.rounded_rectangle(
-        (box_x1, box_y1, box_x2, box_y2),
-        radius=30,
-        fill=(18, 24, 38),
-        outline=(80, 130, 190),
-        width=3
-    )
-
-    wrapped = textwrap.fill(scene_text, width=28)
-    lines = wrapped.split("\n")
-
-    y = 430
-    for line in lines[:9]:
-        draw.text(
-            (width // 2, y),
-            line,
-            font=body_font,
-            fill=(245, 245, 245),
-            anchor="mm"
-        )
-        y += 55
-
-    # CTA button
-    draw.rounded_rectangle(
-        (90, 1010, 630, 1105),
-        radius=24,
-        fill=(90, 180, 255)
-    )
-
-    draw.text(
-        (width // 2, 1058),
-        "Follow for practical AI tools",
-        font=footer_font,
-        fill=(5, 10, 20),
-        anchor="mm"
-    )
-
-    draw.text(
-        (width // 2, 1180),
-        "Create smarter. Automate faster. Grow better.",
-        font=small_font,
-        fill=(220, 225, 235),
-        anchor="mm"
-    )
-
-    temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    img_path = temp_img.name
-    temp_img.close()
-
-    img.save(img_path)
-    return img_path
+            st.write("**Role:**", character.get("role", ""))
+            st.write("**Personality:**", character.get("personality", ""))
+            st.write("**Visual Appearance:**", character.get("visual_appearance", ""))
+            st.write("**Voice Direction:**", character.get("voice_direction", ""))
 
 
-def build_video(script, audio_file, platform):
-    audio = AudioFileClip(audio_file)
-    duration = audio.duration
-
-    scenes = split_script_into_scenes(script)
+def display_scene_cards(scenes):
+    st.markdown("## 🎞️ Cinematic Scenes")
 
     if not scenes:
-        scenes = [script[:250]]
+        st.info("No scenes found.")
+        return
 
-    total_scenes = len(scenes)
-    scene_duration = max(4, duration / total_scenes)
+    for scene in scenes:
+        with st.container(border=True):
+            st.markdown(
+                f"### Scene {scene.get('scene_number', '')}: {scene.get('scene_title', '')}"
+            )
 
-    clips = []
+            col1, col2, col3 = st.columns(3)
 
-    for i, scene in enumerate(scenes, start=1):
-        img_path = create_scene_image(scene, i, total_scenes, platform)
+            with col1:
+                st.write("**Duration:**", scene.get("duration", ""))
 
-        clip = ImageClip(img_path).set_duration(scene_duration)
+            with col2:
+                st.write("**Location:**", scene.get("location", ""))
 
-        # Simple slow zoom
-        clip = clip.resize(lambda t: 1 + 0.015 * t)
+            with col3:
+                st.write("**Mood:**", scene.get("mood", ""))
 
-        if i != 1:
-            clip = clip.crossfadein(0.4)
+            st.write("**Characters in Scene:**", ", ".join(scene.get("characters_in_scene", [])))
 
-        clips.append(clip)
+            st.write("**Visual Description:**")
+            st.write(scene.get("visual_description", ""))
 
-    video = concatenate_videoclips(clips, method="compose", padding=-0.4)
-    video = video.set_audio(audio)
+            st.write("**Camera Direction:**")
+            st.write(scene.get("camera_direction", ""))
 
-    output = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    output_path = output.name
-    output.close()
+            st.write("**Dialogue / Voiceover:**")
+            st.write(scene.get("dialogue_or_voiceover", ""))
 
-    video.write_videofile(
-        output_path,
-        fps=24,
-        codec="libx264",
-        audio_codec="aac"
-    )
+            st.write("**On-Screen Text / Subtitles:**")
+            st.write(scene.get("on_screen_text", ""))
 
-    audio.close()
-    video.close()
+            st.write("**Image Generation Prompt:**")
+            st.code(scene.get("image_prompt", ""), language="text")
 
-    return output_path
+            st.write("**Video Generation Prompt:**")
+            st.code(scene.get("video_prompt", ""), language="text")
 
 
 # =========================
-# Generate Video
+# Generate Plan
 # =========================
 if generate_button:
 
     if not api_key:
         st.error("Please enter your Gemini API Key first.")
 
-    elif not topic.strip():
-        st.error("Please write the video topic first.")
+    elif not video_idea.strip():
+        st.error("Please write the video idea first.")
 
     else:
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(model_name)
 
-            length_instruction = {
-                "Short 45-60 seconds": "Write around 120 to 150 words.",
-                "Medium 90 seconds": "Write around 190 to 230 words.",
-                "Long 2 minutes": "Write around 260 to 320 words."
-            }[video_length]
-
             prompt = f"""
-Write a natural English voiceover script for TRENDIOR AI TOOLS.
+You are an expert cinematic video director, AI video prompt engineer, scriptwriter, casting director, and social media strategist.
 
-Platform: {platform}
-Topic: {topic}
+Create a complete cinematic video production plan for a 4-minute video.
 
-Requirements:
-- Write in English only.
-- {length_instruction}
-- Make it sound human, confident, and conversational.
-- Start with a strong hook in the first sentence.
-- Do not sound robotic.
-- Do not use Arabic.
-- Do not add scene labels.
-- Do not add markdown.
-- Do not add camera directions.
-- Focus on creators, marketers, affiliate marketers, and online business owners.
-- Explain the idea clearly and practically.
-- End with a soft CTA: Follow TRENDIOR AI TOOLS for curated AI tools and smart workflows.
+Brand / Project:
+{brand_name}
+
+Video Idea:
+{video_idea}
+
+Main Goal:
+{main_goal}
+
+Target Platform:
+{target_platform}
+
+Video Style:
+{video_style}
+
+Script Language:
+{language}
+
+IMPORTANT:
+Return the answer ONLY as valid JSON.
+Do not add markdown.
+Do not add explanations outside the JSON.
+Do not wrap the JSON in triple backticks.
+
+The video must be approximately 4 minutes long.
+Create around 12 to 16 scenes.
+Each scene should be between 12 and 25 seconds.
+The style should be realistic, cinematic, emotionally engaging, and suitable for AI video generation tools.
+
+The plan must include:
+1. Video title
+2. Core message
+3. Target audience
+4. Story structure
+5. Full character list
+6. Character type for each character, such as:
+   - child boy
+   - child girl
+   - teenage boy
+   - teenage girl
+   - adult man
+   - adult woman
+   - elderly man
+   - elderly woman
+7. Age and gender for each character
+8. Recommended voice type for each character based on age and gender
+9. Voice direction for each character
+10. Visual appearance for each character
+11. Scene-by-scene cinematic plan
+12. Location for each scene
+13. Image generation prompt for each scene
+14. Video generation prompt for each scene
+15. Dialogue or voiceover for each scene
+16. On-screen text or subtitles for each scene
+17. Music direction
+18. Editing direction
+19. Final CTA
+
+Character rules:
+- The video can include children, adults, elderly people, men, and women when useful for the story.
+- Every character must have a clear character_type.
+- Every character must have a realistic age.
+- Every character must have a clear gender.
+- Every character must have a voice recommendation that matches age and gender.
+- Do not assign an adult voice to a child character.
+- Do not assign a male voice to a female character.
+- Do not assign a female voice to a male character.
+- If a child appears, specify whether the child is a boy or a girl.
+- If an adult appears, specify whether the adult is a man or a woman.
+- If an elderly character appears, specify whether the elderly character is a man or a woman.
+
+Voice recommendations should match the character's age and gender.
+
+Use practical voice labels such as:
+- young boy child voice
+- young girl child voice
+- teenage boy voice
+- teenage girl voice
+- warm adult male voice
+- calm adult male voice
+- confident middle-aged male voice
+- professional adult female voice
+- warm adult female voice
+- calm elderly male voice
+- calm elderly female voice
+- emotional female narrator
+- luxury commercial narrator
+- energetic young male voice
+- calm young female voice
+
+For every image_prompt:
+Write it as a realistic cinematic vertical 9:16 image prompt.
+Include:
+- character type
+- character age
+- gender
+- appearance
+- clothing
+- location
+- lighting
+- mood
+- camera angle
+- cinematic realism
+- high detail
+- no text in image
+
+For every video_prompt:
+Write it as a realistic cinematic vertical 9:16 video prompt.
+Include:
+- character movement
+- camera movement
+- environment movement
+- emotion
+- lighting
+- realistic motion
+- cinematic quality
+- no subtitles baked into the video
+
+The visual style can include scenes like:
+- modern office meeting
+- father and daughter at home
+- businesswoman in a corporate office
+- tired entrepreneur at night
+- family conversation
+- workplace discussion
+- cinematic close-up of a face
+- emotional mirror scene
+- coffee room conversation
+- modern city office background
+- product-style cinematic shots
+- realistic social media drama scenes
+
+Return JSON in this exact structure:
+
+{{
+  "video_title": "",
+  "estimated_duration": "4 minutes",
+  "brand_name": "",
+  "core_message": "",
+  "target_audience": "",
+  "video_style": "",
+  "story_structure": {{
+    "hook": "",
+    "conflict": "",
+    "turning_point": "",
+    "solution": "",
+    "transformation": "",
+    "call_to_action": ""
+  }},
+  "characters": [
+    {{
+      "name": "",
+      "character_type": "",
+      "gender": "",
+      "age": "",
+      "role": "",
+      "personality": "",
+      "visual_appearance": "",
+      "recommended_voice": "",
+      "voice_direction": ""
+    }}
+  ],
+  "scenes": [
+    {{
+      "scene_number": 1,
+      "scene_title": "",
+      "duration": "",
+      "location": "",
+      "mood": "",
+      "characters_in_scene": [],
+      "visual_description": "",
+      "camera_direction": "",
+      "dialogue_or_voiceover": "",
+      "on_screen_text": "",
+      "image_prompt": "",
+      "video_prompt": ""
+    }}
+  ],
+  "music_direction": "",
+  "editing_direction": "",
+  "subtitle_style": "",
+  "final_cta": "",
+  "production_notes": ""
+}}
 """
 
-            with st.spinner("Writing English Script..."):
-                res = model.generate_content(prompt)
-                full_script = clean_script_text(res.text)
+            with st.spinner("Generating cinematic video plan..."):
+                response = model.generate_content(prompt)
+                raw_text = response.text
 
-                st.subheader("📜 Generated English Script")
-                st.write(full_script)
+                cleaned_text = clean_json_response(raw_text)
 
-            with st.spinner("Generating English Voice..."):
-                audio_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-                audio_path = audio_temp.name
-                audio_temp.close()
+                try:
+                    plan = json.loads(cleaned_text)
+                except json.JSONDecodeError:
+                    st.error("The model returned text that could not be parsed as JSON.")
+                    st.subheader("Raw Output")
+                    st.code(raw_text, language="text")
+                    st.stop()
 
-                asyncio.run(generate_voice_over(full_script, voice_type, audio_path))
+            # =========================
+            # Display Results
+            # =========================
+            st.success("✅ 4-minute cinematic video plan generated successfully.")
 
-                st.subheader("🔊 Generated Voice")
-                st.audio(audio_path)
+            st.markdown("## 🎬 Video Overview")
 
-            with st.spinner("Creating Animated Video..."):
-                video_path = build_video(full_script, audio_path, platform)
+            col1, col2 = st.columns(2)
 
-                st.subheader("🎥 Generated Video")
-                st.video(video_path)
+            with col1:
+                st.write("**Title:**", safe_get(plan, "video_title"))
+                st.write("**Estimated Duration:**", safe_get(plan, "estimated_duration"))
+                st.write("**Brand:**", safe_get(plan, "brand_name"))
+                st.write("**Target Audience:**", safe_get(plan, "target_audience"))
 
-                with open(video_path, "rb") as f:
-                    st.download_button(
-                        "⬇️ Download Video",
-                        f,
-                        "trendior_video.mp4",
-                        "video/mp4"
-                    )
+            with col2:
+                st.write("**Video Style:**", safe_get(plan, "video_style"))
+                st.write("**Core Message:**", safe_get(plan, "core_message"))
+                st.write("**Final CTA:**", safe_get(plan, "final_cta"))
+
+            st.markdown("## 🧠 Story Structure")
+            story_structure = plan.get("story_structure", {})
+
+            if story_structure:
+                for key, value in story_structure.items():
+                    st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+
+            display_character_cards(plan.get("characters", []))
+            display_scene_cards(plan.get("scenes", []))
+
+            st.markdown("## 🎵 Music Direction")
+            st.write(plan.get("music_direction", ""))
+
+            st.markdown("## ✂️ Editing Direction")
+            st.write(plan.get("editing_direction", ""))
+
+            st.markdown("## 🔤 Subtitle Style")
+            st.write(plan.get("subtitle_style", ""))
+
+            st.markdown("## 📝 Production Notes")
+            st.write(plan.get("production_notes", ""))
+
+            # Download JSON
+            st.download_button(
+                label="⬇️ Download Video Plan as JSON",
+                data=json.dumps(plan, ensure_ascii=False, indent=2),
+                file_name="trendior_cinematic_video_plan.json",
+                mime="application/json"
+            )
+
+            # Download TXT
+            readable_text = json.dumps(plan, ensure_ascii=False, indent=2)
+            st.download_button(
+                label="⬇️ Download Video Plan as TXT",
+                data=readable_text,
+                file_name="trendior_cinematic_video_plan.txt",
+                mime="text/plain"
+            )
 
         except Exception as e:
             error_message = str(e)
 
             if "429" in error_message or "quota" in error_message.lower():
                 st.error(
-                    "Gemini API quota is not available for this model. "
-                    "Try another model from the sidebar or use another API key from a new Google AI Studio project."
+                    "Gemini API quota is not available for this model. Try another model from the sidebar or use another API key from a new Google AI Studio project."
                 )
                 st.code(error_message)
 
@@ -421,5 +494,5 @@ Requirements:
                 st.code(error_message)
 
             else:
-                st.error("An error occurred while generating the video.")
+                st.error("An error occurred while generating the cinematic video plan.")
                 st.code(error_message)
