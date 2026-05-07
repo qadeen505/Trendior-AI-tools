@@ -5,9 +5,16 @@ import edge_tts
 import tempfile
 import textwrap
 import re
-import math
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+
+
+# =========================
+# Compatibility Fix
+# Fix for Pillow 10+ with MoviePy 1.0.3
+# =========================
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
 
 
 # =========================
@@ -54,30 +61,43 @@ with st.sidebar:
 
     video_length = st.selectbox(
         "Video Length:",
-        ["Short 45-60 seconds", "Medium 90 seconds", "Long 2 minutes"]
+        [
+            "Short 45-60 seconds",
+            "Medium 90 seconds",
+            "Long 2 minutes"
+        ]
     )
 
 
 # =========================
-# Helpers
+# Voice Over Function
 # =========================
 async def generate_voice_over(text, voice, filename):
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(filename)
 
 
+# =========================
+# Helper Functions
+# =========================
 def load_font(size, bold=False):
     try:
         if bold:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+            return ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                size
+            )
+        return ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            size
+        )
     except Exception:
         return ImageFont.load_default()
 
 
 def clean_script_text(text):
-    text = re.sub(r"\[.*?\]", "", text)
-    text = re.sub(r"\(.*?\)", "", text)
+    text = re.sub(r".*?", "", text)
+    text = re.sub(r".*?", "", text)
     text = text.replace("*", "")
     text = text.replace("#", "")
     text = re.sub(r"\s+", " ", text).strip()
@@ -140,7 +160,7 @@ def create_scene_image(scene_text, scene_number, total_scenes, platform):
     for pos, color in zip(circle_positions, circle_colors):
         draw.ellipse(pos, outline=color, width=6)
 
-    # Top brand
+    # Brand title
     draw.text(
         (width // 2, 92),
         "TRENDIOR AI TOOLS",
@@ -188,6 +208,7 @@ def create_scene_image(scene_text, scene_number, total_scenes, platform):
     # Main text box
     box_x1, box_y1 = 70, 350
     box_x2, box_y2 = 650, 900
+
     draw.rounded_rectangle(
         (box_x1, box_y1, box_x2, box_y2),
         radius=30,
@@ -210,7 +231,7 @@ def create_scene_image(scene_text, scene_number, total_scenes, platform):
         )
         y += 55
 
-    # CTA footer
+    # CTA button
     draw.rounded_rectangle(
         (90, 1010, 630, 1105),
         radius=24,
@@ -236,6 +257,7 @@ def create_scene_image(scene_text, scene_number, total_scenes, platform):
     temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     img_path = temp_img.name
     temp_img.close()
+
     img.save(img_path)
 
     return img_path
@@ -246,6 +268,7 @@ def build_video(script, audio_file, platform):
     duration = audio.duration
 
     scenes = split_script_into_scenes(script)
+
     if not scenes:
         scenes = [script[:250]]
 
@@ -268,128 +291,4 @@ def build_video(script, audio_file, platform):
         clips.append(clip)
 
     video = concatenate_videoclips(clips, method="compose", padding=-0.4)
-    video = video.set_audio(audio)
-
-    output = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    output_path = output.name
-    output.close()
-
-    video.write_videofile(
-        output_path,
-        fps=24,
-        codec="libx264",
-        audio_codec="aac"
-    )
-
-    audio.close()
-    video.close()
-
-    return output_path
-
-
-# =========================
-# Main Inputs
-# =========================
-topic = st.text_area(
-    "Video Topic / Prompt:",
-    placeholder="Example: Create a 60-second video about how NotebookLM can help marketers analyze YouTube content and turn it into original ideas."
-)
-
-platform = st.selectbox(
-    "Platform:",
-    ["TikTok", "Instagram Reels", "YouTube Shorts"]
-)
-
-
-# =========================
-# Generate Button
-# =========================
-if st.button("🚀 Generate Full Video"):
-
-    if not api_key:
-        st.error("Please enter your Gemini API Key first.")
-
-    elif not topic.strip():
-        st.error("Please write the video topic first.")
-
-    else:
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(model_name)
-
-            length_instruction = {
-                "Short 45-60 seconds": "Write around 120 to 150 words.",
-                "Medium 90 seconds": "Write around 190 to 230 words.",
-                "Long 2 minutes": "Write around 260 to 320 words."
-            }[video_length]
-
-            prompt = f"""
-Write a natural English voiceover script for TRENDIOR AI TOOLS.
-
-Platform: {platform}
-Topic: {topic}
-
-Requirements:
-- Write in English only.
-- {length_instruction}
-- Make it sound human, confident, and conversational.
-- Start with a strong hook in the first sentence.
-- Do not sound robotic.
-- Do not use Arabic.
-- Do not add scene labels.
-- Do not add markdown.
-- Do not add camera directions.
-- Focus on creators, marketers, affiliate marketers, and online business owners.
-- Explain the idea clearly and practically.
-- End with a soft CTA: Follow TRENDIOR AI TOOLS for curated AI tools and smart workflows.
-"""
-
-            with st.spinner("Writing English Script..."):
-                res = model.generate_content(prompt)
-                full_script = clean_script_text(res.text)
-
-                st.subheader("📜 Generated English Script")
-                st.write(full_script)
-
-            with st.spinner("Generating English Voice..."):
-                audio_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-                audio_path = audio_temp.name
-                audio_temp.close()
-
-                asyncio.run(generate_voice_over(full_script, voice_type, audio_path))
-
-                st.subheader("🔊 Generated Voice")
-                st.audio(audio_path)
-
-            with st.spinner("Creating Animated Video..."):
-                video_path = build_video(full_script, audio_path, platform)
-
-                st.subheader("🎥 Generated Video")
-                st.video(video_path)
-
-                with open(video_path, "rb") as f:
-                    st.download_button(
-                        "⬇️ Download Video",
-                        f,
-                        "trendior_video.mp4",
-                        "video/mp4"
-                    )
-
-        except Exception as e:
-            error_message = str(e)
-
-            if "429" in error_message or "quota" in error_message.lower():
-                st.error(
-                    "Gemini API quota is not available for this model. Try another model from the sidebar or use another API key from a new Google AI Studio project."
-                )
-                st.code(error_message)
-
-            elif "API key" in error_message or "permission" in error_message.lower():
-                st.error(
-                    "There is a problem with the API key. Make sure it is correct and created from Google AI Studio."
-                )
-                st.code(error_message)
-
-            else:
-                st.error("An error occurred while generating the video.")
-                st.code(error_message)
+    video
