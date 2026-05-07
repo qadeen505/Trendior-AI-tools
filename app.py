@@ -41,7 +41,7 @@ if st.button("🚀 إنتاج الفيديو الكامل"):
         try:
             genai.configure(api_key=api_key)
             # تم تحديث النموذج هنا ليصبح متوافقاً
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('models/gemini-pro')
             
             with st.spinner("Writing Script..."):
                 res = model.generate_content(f"اكتب سيناريو جذاب لـ {platform} عن {topic}")
