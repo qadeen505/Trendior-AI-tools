@@ -2,7 +2,7 @@ streamlit
 google-generativeai>=0.8.5
 edge-tts
 moviepy==1.0.3
-Pillow
+Pillow==9.5.0
 imageio
 imageio-ffmpeg
 decorator
