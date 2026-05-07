@@ -1,5 +1,8 @@
 streamlit
-google-generativeai
+google-generativeai>=0.8.5
 edge-tts
-moviepy==1.0.3
-numpy
+moviepy
+Pillow
+imageio
+imageio-ffmpeg
+decorator
