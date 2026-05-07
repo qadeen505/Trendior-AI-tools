@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import asyncio
 import edge_tts
-import os
 import tempfile
 from moviepy.editor import ColorClip, TextClip, CompositeVideoClip, AudioFileClip
 
@@ -17,6 +16,7 @@ st.set_page_config(
 )
 
 st.title("🎬 Trendior AI Tools: Full Edition")
+st.write("أداة بسيطة لإنشاء سكربت + تعليق صوتي + فيديو قصير لمشروع TRENDIOR AI TOOLS.")
 
 
 # =========================
@@ -24,7 +24,18 @@ st.title("🎬 Trendior AI Tools: Full Edition")
 # =========================
 with st.sidebar:
     st.header("⚙️ Settings")
+
     api_key = st.text_input("Gemini API Key", type="password")
+
+    model_name = st.selectbox(
+        "Gemini Model:",
+        [
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash"
+        ]
+    )
+
     voice_type = st.selectbox(
         "Voice:",
         [
@@ -56,11 +67,11 @@ def build_video(script, audio_file):
         color=(20, 20, 20)
     ).set_duration(duration)
 
-    short_text = script[:700]
+    video_text = "TRENDIOR AI TOOLS\n\n" + script[:900]
 
     txt = TextClip(
-        "Trendior AI Tools\n\n" + short_text,
-        fontsize=38,
+        video_text,
+        fontsize=36,
         color="white",
         size=(620, 1000),
         method="caption",
@@ -93,7 +104,7 @@ def build_video(script, audio_file):
 # =========================
 topic = st.text_area(
     "وصف الفيديو:",
-    placeholder="مثال: اعمل لي فيديو عن أفضل أدوات الذكاء الاصطناعي لصناعة المحتوى والتسويق"
+    placeholder="مثال: اعمل لي فيديو قصير عن أداة ذكاء اصطناعي تساعد المسوقين وصناع المحتوى على توفير الوقت وزيادة الإنتاجية."
 )
 
 platform = st.selectbox(
@@ -108,16 +119,16 @@ platform = st.selectbox(
 if st.button("🚀 إنتاج الفيديو الكامل"):
 
     if not api_key:
-        st.error("أدخل مفتاح الـ API أولاً")
+        st.error("أدخل مفتاح Gemini API أولاً.")
 
     elif not topic.strip():
-        st.error("اكتب وصف الفيديو أولاً")
+        st.error("اكتب وصف الفيديو أولاً.")
 
     else:
         try:
             genai.configure(api_key=api_key)
 
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel(model_name)
 
             prompt = f"""
 اكتب سيناريو فيديو احترافي لمشروع TRENDIOR AI TOOLS.
@@ -125,13 +136,18 @@ if st.button("🚀 إنتاج الفيديو الكامل"):
 المطلوب:
 - المنصة: {platform}
 - موضوع الفيديو: {topic}
-- اجعل الأسلوب تسويقيًا، واضحًا، مقنعًا، ومناسبًا لأدوات الذكاء الاصطناعي.
-- لا تكتب مقدمة طويلة.
+
+الشروط:
+- اجعل الأسلوب تسويقيًا، واضحًا، مقنعًا، واحترافيًا.
 - ابدأ بخطاف قوي في أول 5 ثواني.
+- لا تستخدم مقدمة طويلة.
+- لا تقلد أي منشئ محتوى.
+- لا تستخدم عبارات مبالغ فيها أو وعود غير واقعية.
 - اشرح الفكرة بطريقة بسيطة.
-- اربط الفكرة بفائدة عملية للمسوقين، صناع المحتوى، وأصحاب الأعمال الرقمية.
+- اربط الفكرة بفائدة عملية لصناع المحتوى، المسوقين، أصحاب المشاريع الرقمية، والمهتمين بأدوات الذكاء الاصطناعي.
+- اجعل النص مناسبًا للتعليق الصوتي.
 - اختم بدعوة للمتابعة وزيارة TRENDIOR AI TOOLS.
-- اكتب النص فقط بدون عناوين تقنية أو ملاحظات إخراجية.
+- اكتب النص النهائي فقط بدون عناوين تقنية وبدون ملاحظات إخراجية.
 """
 
             with st.spinner("Writing Script..."):
@@ -147,6 +163,8 @@ if st.button("🚀 إنتاج الفيديو الكامل"):
                 audio_temp.close()
 
                 asyncio.run(generate_voice_over(full_script, voice_type, audio_path))
+
+                st.subheader("🔊 Generated Voice")
                 st.audio(audio_path)
 
             with st.spinner("Creating Video..."):
@@ -164,4 +182,21 @@ if st.button("🚀 إنتاج الفيديو الكامل"):
                     )
 
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            error_message = str(e)
+
+            if "429" in error_message or "quota" in error_message.lower():
+                st.error(
+                    "حدث خطأ بسبب نفاد أو عدم توفر حصة Gemini API لهذا الموديل. "
+                    "جرّب تغيير الموديل من القائمة الجانبية إلى gemini-1.5-flash أو استخدم API Key من مشروع Google AI Studio آخر."
+                )
+                st.code(error_message)
+
+            elif "API key" in error_message or "permission" in error_message.lower():
+                st.error(
+                    "يبدو أن هناك مشكلة في مفتاح API. تأكد أن المفتاح صحيح ومأخوذ من Google AI Studio."
+                )
+                st.code(error_message)
+
+            else:
+                st.error("حدث خطأ أثناء تنفيذ العملية.")
+                st.code(error_message)
